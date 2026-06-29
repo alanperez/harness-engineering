@@ -45,5 +45,6 @@
       "@/*": ["./web/src/*"],
       "@shared/*": ["./shared/*"]
     }
-  }
+  },
+  "include": ["src","shared", "harness", "web"]
 }

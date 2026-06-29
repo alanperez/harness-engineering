@@ -4,14 +4,56 @@ config ({ path: ".dev.vars" });
 import express from "express";
 import { createServer } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
+import { createEmitter, EventBus } from "./bus";
+import { runAgent } from "../harness/runtime";
+import { EventType, type ClientMessage} from "@shared/events";
+
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT ?? 8787);
 
 app.get("/health", (_req, res) => {
     res.json({ ok: true })
 });
 
-app.listen(PORT, () => {
-    console.log(`Listening to port ${PORT}`)
+
+const server = createServer(app);
+const wss = new WebSocketServer({ server, path: "/ws"});
+const bus = new EventBus();
+
+// Forward evry event the harness emits to all connected inspectors
+bus.subscribe((event) => {
+    const data = JSON.stringify(event);
+    for (const client of wss.clients) {
+        if (client.readyState === client.OPEN) client.send(data);
+    }
+});
+
+wss.on("connection", (socket: WebSocket) => {
+    // Replay the timeline so far so a fresh inspector isn't blank
+    for (const event of bus.history()) socket.send(JSON.stringify(event));
+
+    socket.on("message", (raw) => {
+        let message: ClientMessage;
+        try {
+            message = JSON.parse(raw.toString());
+        } catch {
+            return; // ignore anything that isnt valid JSON
+        }
+
+        if (message.type === "submit_task") {
+            const emit = createEmitter(bus);
+
+            // Fire and forget, the agent reports everything via agents, not a return value
+            runAgent({ input: message.input, emit }).catch((error) => {
+                emit({ type: EventType.Log, level: "error", message: String(error) });
+            });
+
+        }
+    });
+});
+
+
+server.listen(PORT, () => {
+    console.log(`Listening to port localhost:${PORT} (ws: /ws)`)
 })
 
