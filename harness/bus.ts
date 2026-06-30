@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { db, eventLog } from "../harness/db";
+import { db, eventLog } from "./db";
 import type { AgentEvent, EventInput, Emit } from "@shared/events";
 
 
